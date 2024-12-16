@@ -1,0 +1,382 @@
+processVcfFile<-function(vcf_input,j){
+    vcf_temp<-read.table(vcf_input,header=FALSE)
+    vcf_temp2<-vcf_temp[,c(1:9,9+j)]
+    vcf<-vcf_temp2[vcf_temp2[,10]!="./.",]
+    return(vcf)
+}
+
+#Frequency analysis:
+#use (no) quality threshold
+frequencyAnalysis<-function(samples,
+                            directory2,
+                            bases_quality,
+                            quality_threshold,
+                            genome){
+    message("Analyze Frequency")
+    frequency_weight<-list()
+    bases<-bases_quality[[1]]
+    quality<-bases_quality[[2]]
+    
+    for(j in 1:length(samples[,1])){
+        frequency_weight[[j]]<-data.frame(chr=NA,pos=NA,ref=NA,a=NA,a_qual=NA,
+                                          c=NA,c_qual=NA,g=NA,g_qual=NA,t=NA,
+                                          t_qual=NA,Del=NA,Ins=NA,Ins_a=NA,
+                                          Ins_a_qual=NA,Ins_c=NA,Ins_c_qual=NA,
+                                          Ins_g=NA,Ins_g_qual=NA,Ins_t=NA,
+                                          Ins_t_qual=NA,excluded=NA)
+    }
+    for(j in 1:length(samples[,1])){
+        message("Sample ",j)       
+        for(i in 1:length(bases_quality[[1]][[j]][1,])){
+            if(vcountPattern(".",names(bases_quality[[1]][[j]])[i])==1){
+                start<-as.numeric(strsplit(strsplit(names(bases_quality[[1]][[j]])[i],split="\\.")[[1]][1],split=";")[[1]][2])
+            }
+            if(vcountPattern(".",names(bases_quality[[1]][[j]])[i])==0){
+                start<-as.numeric(strsplit(names(bases_quality[[1]][[j]])[i],split=";")[[1]][2])
+            }
+            chr<-paste("chr",as.character(strsplit(names(bases_quality[[1]][[j]])[i],split=";")[[1]][1]),sep="")
+            ref<-genome[[chr]][start]
+            
+            frequency_weight[[j]][i,1]<-chr
+            frequency_weight[[j]][i,2]<-start
+            frequency_weight[[j]][i,3]<-as.character(ref)
+            
+            a_qual<-c()
+            c_qual<-c()
+            g_qual<-c()
+            t_qual<-c()
+            ins_a_qual<-c()
+            ins_c_qual<-c()
+            ins_g_qual<-c()
+            ins_t_qual<-c()
+            
+            if(bases[[j]][1,i]!="NotCovered"){
+                for(k in 1:sum(!is.na(bases[[j]][,i]))){
+                    if(!is.na(bases[[j]][k,i])&&quality[[j]][k,i]>quality_threshold){
+                        if(bases[[j]][k,i]=="A"){
+                            frequency_weight[[j]][i,4]<-sum(frequency_weight[[j]][i,4],1,na.rm=TRUE)
+                            a_qual[frequency_weight[[j]][i,4]]<-quality[[j]][k,i]
+                        }
+                        if(bases[[j]][k,i]=="C"){
+                            frequency_weight[[j]][i,6]<-sum(frequency_weight[[j]][i,6],1,na.rm=TRUE)
+                            c_qual[frequency_weight[[j]][i,6]]<-quality[[j]][k,i]
+                        }
+                        if(bases[[j]][k,i]=="G"){
+                            frequency_weight[[j]][i,8]<-sum(frequency_weight[[j]][i,8],1,na.rm=TRUE)
+                            g_qual[frequency_weight[[j]][i,8]]<-quality[[j]][k,i]
+                        }
+                        if(bases[[j]][k,i]=="T"){
+                            frequency_weight[[j]][i,10]<-sum(frequency_weight[[j]][i,10],1,na.rm=TRUE)
+                            t_qual[frequency_weight[[j]][i,10]]<-quality[[j]][k,i]
+                        }
+                        if(substring(bases[[j]][k,i],1,1)=="I"){
+                            frequency_weight[[j]][i,13]<-sum(frequency_weight[[j]][i,13],1,na.rm=TRUE)
+                            if(substring(bases[[j]][k,i],4,4)=="A"){
+                                frequency_weight[[j]][i,4]<-sum(frequency_weight[[j]][i,4],1,na.rm=TRUE)
+                                a_qual[frequency_weight[[j]][i,4]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,14]<-sum(frequency_weight[[j]][i,14],1,na.rm=TRUE)
+                                ins_a_qual[frequency_weight[[j]][i,14]]<-quality[[j]][k,i]
+                            }
+                            if(substring(bases[[j]][k,i],4,4)=="C"){
+                                frequency_weight[[j]][i,6]<-sum(frequency_weight[[j]][i,6],1,na.rm=TRUE)
+                                c_qual[frequency_weight[[j]][i,6]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,16]<-sum(frequency_weight[[j]][i,16],1,na.rm=TRUE)
+                                ins_c_qual[frequency_weight[[j]][i,16]]<-quality[[j]][k,i]
+                            }
+                            if(substring(bases[[j]][k,i],4,4)=="G"){
+                                frequency_weight[[j]][i,8]<-sum(frequency_weight[[j]][i,8],1,na.rm=TRUE)
+                                g_qual[frequency_weight[[j]][i,8]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,18]<-sum(frequency_weight[[j]][i,18],1,na.rm=TRUE)
+                                ins_g_qual[frequency_weight[[j]][i,18]]<-quality[[j]][k,i]
+                            }
+                            if(substring(bases[[j]][k,i],4,4)=="T"){
+                                frequency_weight[[j]][i,10]<-sum(frequency_weight[[j]][i,10],1,na.rm=TRUE)
+                                t_qual[frequency_weight[[j]][i,10]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,20]<-sum(frequency_weight[[j]][i,20],1,na.rm=TRUE)
+                                ins_t_qual[frequency_weight[[j]][i,20]]<-quality[[j]][k,i]
+                            }
+                        }
+                    }
+                    if(!is.na(bases[[j]][k,i])&&quality[[j]][k,i]<=quality_threshold&&quality[[j]][k,i]!=-1){
+                        frequency_weight[[j]][i,22]<-sum(frequency_weight[[j]][i,22],1,na.rm=TRUE)
+                    }
+                    if(!is.na(bases[[j]][k,i])&&quality[[j]][k,i]==-1&&bases[[j]][k,i]=="D"){
+                        frequency_weight[[j]][i,12]<-sum(frequency_weight[[j]][i,12],1,na.rm=TRUE)
+                    }
+                }  
+                
+                if(!is.na(frequency_weight[[j]][i,4])){
+                    frequency_weight[[j]][i,5]<-mean(a_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,6])){
+                    frequency_weight[[j]][i,7]<-mean(c_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,8])){
+                    frequency_weight[[j]][i,9]<-mean(g_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,10])){
+                    frequency_weight[[j]][i,11]<-mean(t_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,14])){
+                    frequency_weight[[j]][i,15]<-mean(ins_a_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,16])){
+                    frequency_weight[[j]][i,17]<-mean(ins_c_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,18])){
+                    frequency_weight[[j]][i,19]<-mean(ins_g_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,20])){
+                    frequency_weight[[j]][i,21]<-mean(ins_t_qual)
+                }
+            }
+        }
+        write.table(frequency_weight[[j]],
+                    paste(directory2,"/",samples[j,1],".frequency.txt",sep=""),
+                    row.names=FALSE,sep="\t",quote=FALSE)
+    }
+    return(frequency_weight)
+}
+
+
+#Frequency analysis:
+#use (no) quality threshold
+frequencyAnalysisVcf<-function(samples,
+                               vcf_input,
+                               directory2,
+                               bases_quality,
+                               quality_threshold,
+                               genome){
+    message("Analyze Frequency")
+    frequency_weight<-list()
+    bases<-bases_quality[[1]]
+    quality<-bases_quality[[2]]
+    
+    for(j in 1:length(samples[,1])){
+        frequency_weight[[j]]<-data.frame(chr=NA,pos=NA,ref=NA,a=NA,a_qual=NA,
+                                          c=NA,c_qual=NA,g=NA,g_qual=NA,t=NA,
+                                          t_qual=NA,Del=NA,Ins=NA,Ins_a=NA,
+                                          Ins_a_qual=NA,Ins_c=NA,Ins_c_qual=NA,
+                                          Ins_g=NA,Ins_g_qual=NA,Ins_t=NA,
+                                          Ins_t_qual=NA,excluded=NA,
+                                          vcf_call_1=NA,vcf_call_2=NA,GT=NA,
+                                          Insert=NA)
+    }
+    for(j in 1:length(samples[,1])){
+        message("Sample ",j)
+        for(i in 1:length(bases_quality[[1]][[j]][1,])){
+            if(vcountPattern(".",names(bases_quality[[1]][[j]])[i])==1){
+                start<-as.numeric(strsplit(strsplit(names(bases_quality[[1]][[j]])[i],split="\\.")[[1]][1],split=";")[[1]][2])
+            }
+            if(vcountPattern(".",names(bases_quality[[1]][[j]])[i])==0){
+                start<-as.numeric(strsplit(names(bases_quality[[1]][[j]])[i],split=";")[[1]][2])
+            }
+            chr<-paste("chr",as.character(strsplit(names(bases_quality[[1]][[j]])[i],split=";")[[1]][1]),sep="")
+            ref<-genome[[chr]][start]
+            
+            frequency_weight[[j]][i,1]<-chr
+            frequency_weight[[j]][i,2]<-start
+            frequency_weight[[j]][i,3]<-as.character(ref)
+            
+            a_qual<-c()
+            c_qual<-c()
+            g_qual<-c()
+            t_qual<-c()
+            ins_a_qual<-c()
+            ins_c_qual<-c()
+            ins_g_qual<-c()
+            ins_t_qual<-c()
+            
+            if(bases[[j]][1,i]!="NotCovered"){
+                for(k in 1:sum(!is.na(bases[[j]][,i]))){
+                    if(!is.na(bases[[j]][k,i])&&quality[[j]][k,i]>quality_threshold){
+                        if(bases[[j]][k,i]=="A"){
+                            frequency_weight[[j]][i,4]<-sum(frequency_weight[[j]][i,4],1,na.rm=TRUE)
+                            a_qual[frequency_weight[[j]][i,4]]<-quality[[j]][k,i]
+                        }
+                        if(bases[[j]][k,i]=="C"){
+                            frequency_weight[[j]][i,6]<-sum(frequency_weight[[j]][i,6],1,na.rm=TRUE)
+                            c_qual[frequency_weight[[j]][i,6]]<-quality[[j]][k,i]
+                        }
+                        if(bases[[j]][k,i]=="G"){
+                            frequency_weight[[j]][i,8]<-sum(frequency_weight[[j]][i,8],1,na.rm=TRUE)
+                            g_qual[frequency_weight[[j]][i,8]]<-quality[[j]][k,i]
+                        }
+                        if(bases[[j]][k,i]=="T"){
+                            frequency_weight[[j]][i,10]<-sum(frequency_weight[[j]][i,10],1,na.rm=TRUE)
+                            t_qual[frequency_weight[[j]][i,10]]<-quality[[j]][k,i]
+                        }
+                        if(substring(bases[[j]][k,i],1,1)=="I"){
+                            frequency_weight[[j]][i,13]<-sum(frequency_weight[[j]][i,13],1,na.rm=TRUE)
+                            if(substring(bases[[j]][k,i],4,4)=="A"){
+                                frequency_weight[[j]][i,4]<-sum(frequency_weight[[j]][i,4],1,na.rm=TRUE)
+                                a_qual[frequency_weight[[j]][i,4]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,14]<-sum(frequency_weight[[j]][i,14],1,na.rm=TRUE)
+                                ins_a_qual[frequency_weight[[j]][i,14]]<-quality[[j]][k,i]
+                            }
+                            if(substring(bases[[j]][k,i],4,4)=="C"){
+                                frequency_weight[[j]][i,6]<-sum(frequency_weight[[j]][i,6],1,na.rm=TRUE)
+                                c_qual[frequency_weight[[j]][i,6]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,16]<-sum(frequency_weight[[j]][i,16],1,na.rm=TRUE)
+                                ins_c_qual[frequency_weight[[j]][i,16]]<-quality[[j]][k,i]
+                            }
+                            if(substring(bases[[j]][k,i],4,4)=="G"){
+                                frequency_weight[[j]][i,8]<-sum(frequency_weight[[j]][i,8],1,na.rm=TRUE)
+                                g_qual[frequency_weight[[j]][i,8]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,18]<-sum(frequency_weight[[j]][i,18],1,na.rm=TRUE)
+                                ins_g_qual[frequency_weight[[j]][i,18]]<-quality[[j]][k,i]
+                            }
+                            if(substring(bases[[j]][k,i],4,4)=="T"){
+                                frequency_weight[[j]][i,10]<-sum(frequency_weight[[j]][i,10],1,na.rm=TRUE)
+                                t_qual[frequency_weight[[j]][i,10]]<-quality[[j]][k,i]
+                                frequency_weight[[j]][i,20]<-sum(frequency_weight[[j]][i,20],1,na.rm=TRUE)
+                                ins_t_qual[frequency_weight[[j]][i,20]]<-quality[[j]][k,i]
+                            }
+                        }
+                    }
+                    if(!is.na(bases[[j]][k,i])&&quality[[j]][k,i]<=quality_threshold&&quality[[j]][k,i]!=-1){
+                        frequency_weight[[j]][i,22]<-sum(frequency_weight[[j]][i,22],1,na.rm=TRUE)
+                    }
+                    if(!is.na(bases[[j]][k,i])&&quality[[j]][k,i]==-1&&bases[[j]][k,i]=="D"){
+                        frequency_weight[[j]][i,12]<-sum(frequency_weight[[j]][i,12],1,na.rm=TRUE)
+                    }
+                }  
+                
+                if(!is.na(frequency_weight[[j]][i,4])){
+                    frequency_weight[[j]][i,5]<-mean(a_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,6])){
+                    frequency_weight[[j]][i,7]<-mean(c_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,8])){
+                    frequency_weight[[j]][i,9]<-mean(g_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,10])){
+                    frequency_weight[[j]][i,11]<-mean(t_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,14])){
+                    frequency_weight[[j]][i,15]<-mean(ins_a_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,16])){
+                    frequency_weight[[j]][i,17]<-mean(ins_c_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,18])){
+                    frequency_weight[[j]][i,19]<-mean(ins_g_qual)
+                }
+                if(!is.na(frequency_weight[[j]][i,20])){
+                    frequency_weight[[j]][i,21]<-mean(ins_t_qual)
+                }
+            }
+            
+            
+            if(is.character(vcf_input)==TRUE){
+                if(substr(vcf_input,nchar(vcf_input)-3,nchar(vcf_input))!=".vcf"){
+                    vcf<-read.table(paste(vcf_input,"/",samples[j,1],".vcf",sep=""),
+                                    header=FALSE)
+                }
+                if(substr(vcf_input,nchar(vcf_input)-3,nchar(vcf_input))==".vcf"){
+                    vcf<-processVcfFile(vcf_input,j)
+                }
+            }
+            if(is.character(vcf_input)==FALSE){
+                vcf<-read.table(path(vcf_input)[j],header=FALSE)
+            }
+            if(length(vcf[,1])>0){
+                for(k in 1:length(vcf[,1])){
+                    del<-FALSE
+                    ins<-FALSE
+                    del_length<-c()
+                    ins_length<-c()
+                    #deletion
+                    if(nchar(as.character(vcf[k,4]))>1){
+                        del<-TRUE
+                        if(vcountPattern(",",as.character(vcf[k,5]))==1){
+                            del_length[1]<-nchar(as.character(vcf[k,4]))-nchar(strsplit(as.character(vcf[k,5]),split=",")[[1]][1])
+                            del_length[2]<-nchar(as.character(vcf[k,4]))-nchar(strsplit(as.character(vcf[k,5]),split=",")[[1]][2])
+                        }
+                        if(vcountPattern(",",as.character(vcf[k,5]))==0){
+                            del_length[1]<-nchar(as.character(vcf[k,4]))-nchar(as.character(vcf[k,5]))
+                        }
+                    }
+                    #insert
+                    if((nchar(as.character(vcf[k,5]))>1
+                       &&vcountPattern(",",as.character(vcf[k,5]))==0)
+                       ||(vcountPattern(",",as.character(vcf[k,5]))==1
+                       &&nchar(strsplit(as.character(vcf[k,5]),split=",")[[1]][1])>1
+                       &&nchar(strsplit(as.character(vcf[k,5]),split=",")[[1]][2])>1)){
+                        ins<-TRUE
+                        if(vcountPattern(",",as.character(vcf[k,5]))==1){
+                            ins_length[1]<-nchar(as.character(vcf[k,5]))-nchar(strsplit(as.character(vcf[k,4]),split=",")[[1]][1])
+                            ins_length[2]<-nchar(as.character(vcf[k,5]))-nchar(strsplit(as.character(vcf[k,4]),split=",")[[1]][2])
+                        }
+                        if(vcountPattern(",",as.character(vcf[k,5]))==0){
+                            ins_length[1]<-nchar(as.character(vcf[k,5]))-nchar(as.character(vcf[k,4]))
+                        }
+                    }
+                    
+                    #snv
+                    if(k<length(vcf[,1])&&del==FALSE&&ins==FALSE
+                       &&as.character(vcf[k,1])==substr(chr,4,nchar(chr))
+                       &&vcf[k,2]==start){
+                        if(vcountPattern(as.character(vcf[k,5]),pattern=",")==0){
+                            frequency_weight[[j]][i,23]<-as.character(vcf[k,5])
+                        }
+                        if(vcountPattern(as.character(vcf[k,5]),pattern=",")==1){
+                            frequency_weight[[j]][i,23]<-strsplit(as.character(vcf[k,5]),split=",")[[1]][1]
+                            frequency_weight[[j]][i,23]<-strsplit(as.character(vcf[k,5]),split=",")[[1]][2]
+                        }
+                        frequency_weight[[j]][i,25]<-strsplit(as.character(vcf[k,10]),split=":")[[1]][1]
+                        k<-length(vcf[,1])+1
+                    }   
+                    #deletion
+                    if(k<length(vcf[,1])&&del==TRUE&&is.na(del_length[2])
+                       &&as.character(vcf[k,1])==substr(chr,4,nchar(chr))
+                       &&vcf[k,2]<=start-1&&vcf[k,2]>=start-del_length[1]){
+                        frequency_weight[[j]][i,23]<-""
+                        frequency_weight[[j]][i,25]<-strsplit(as.character(vcf[k,10]),split=":")[[1]][1]
+                        k<-length(vcf[,1])+1
+                    }
+                    if(k<length(vcf[,1])&&del==TRUE
+                       &&!is.na(del_length[2])
+                       &&as.character(vcf[k,1])==substr(chr,4,nchar(chr))
+                       &&vcf[k,2]<=start-1
+                       &&(vcf[k,2]>=start-del_length[1]||vcf[k,2]>=start-del_length[2])){
+                        frequency_weight[[j]][i,23]<-substr(strsplit(as.character(vcf[k,5]),split=",")[[1]][1],
+                                                            nchar(as.character(vcf[k,4]))-(start-vcf[k,2]-1),
+                                                            nchar(as.character(vcf[k,4]))-(start-vcf[k,2]-1))
+                        frequency_weight[[j]][i,24]<-substr(strsplit(as.character(vcf[k,5]),split=",")[[1]][2],
+                                                            nchar(as.character(vcf[k,4]))-(start-vcf[k,2]-1),
+                                                            nchar(as.character(vcf[k,4]))-(start-vcf[k,2]-1))
+                        frequency_weight[[j]][i,25]<-strsplit(as.character(vcf[k,10]),split=":")[[1]][1]
+                        k<-length(vcf[,1])+1
+                    }
+                    #insert
+                    if(k<length(vcf[,1])&&ins==TRUE&&is.na(ins_length[2])
+                       &&as.character(vcf[k,1])==substr(chr,4,nchar(chr))
+                       &&vcf[k,2]==start-1){
+                        frequency_weight[[j]][i,23]<-substr(as.character(vcf[k,5]),2,nchar(as.character(vcf[k,5])))
+                        frequency_weight[[j]][i,25]<-strsplit(as.character(vcf[k,10]),split=":")[[1]][1]
+                        frequency_weight[[j]][i,26]<-TRUE
+                        k<-length(vcf[,1])+1
+                    }
+                    if(k<length(vcf[,1])&&ins==TRUE&&!is.na(ins_length[2])
+                       &&as.character(vcf[k,1])==substr(chr,4,nchar(chr))
+                       &&vcf[k,2]==start-1){
+                        frequency_weight[[j]][i,23]<-substr(strsplit(as.character(vcf[k,5]),split=",")[[1]][1],
+                                                            2,nchar(as.character(vcf[k,5])))
+                        frequency_weight[[j]][i,24]<-substr(strsplit(as.character(vcf[k,5]),split=",")[[1]][2],
+                                                            2,nchar(as.character(vcf[k,5])))
+                        frequency_weight[[j]][i,25]<-strsplit(as.character(vcf[k,10]),split=":")[[1]][1]
+                        frequency_weight[[j]][i,26]<-TRUE
+                        k<-length(vcf[,1])+1
+                    }
+                } 
+            } 
+        }
+        write.table(frequency_weight[[j]],
+                    paste(directory2,"/",samples[j,1],".frequency.txt",sep=""),
+                    row.names=FALSE,sep="\t",quote=FALSE)
+    }
+    return(frequency_weight)
+}
+

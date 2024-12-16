@@ -1,0 +1,377 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{color}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage[absolute,verbose,overlay]{textpos}
+\usepackage{amssymb}
+\usepackage{tikz} 
+\usepackage{colortbl}
+\usepackage[figurewithin=section]{caption}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{xr}
+\usepackage{pdflscape}
+\usepackage{Sweave}
+%\VignetteIndexEntry{Using BBCAnalyzer}
+
+<<echo=FALSE>>=
+options(width=100)
+@
+
+\title{BBCAnalyzer -- an R/Bioconductor package for visualizing base counts}
+\author{Sarah Sandmann}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+The analysis of alignment data is an essential step in the process of analyzing sequencing data. Mutations like single nucleotide base changes, deletions and insertions may be identified in this step.
+
+Usually, the available programs -- like GATK \cite{gatk} or SAMtools \cite{samtools} -- take a bam file, containing the alignment data in a compressed form, as input and return a vcf file containing the called variants and a selection of parameters characterizing them. The overall depth as well as the allele frequencies are returned as two of these parameters.
+
+However, the programs do usually not report the unfiltered number of reads covering a certain mutated base, but they apply a set of partially complex filtration steps. Thresholds -- internally or user-defined -- are usually used to reject additional variants with a minor ratio. Furthermore, to our knowledge it is not possible to perform a comparable analysis of positions where no variant is called.
+
+The integrative genomics viewer (IGV) \cite{igv} provides a possibility for investigating the different number of bases, deletions and insertions at any position in the genome. Yet, it is time consuming to load different samples into the program and to look at the different positions of interest. Moreover, there is no way of automatically summing up and visualizing the base counts in IGV. 
+
+With regards to the comparison of different sequencing techniques, it appears useful to have a tool that is able to visualize the background at a selection of locations where e.g. one technique calls a variant but another technique does not. Furthermore, it seems helpful to have a possibility for quickly analyzing positions of expected mutations, which have not been called.
+
+This package provides a possibility for visualizing the number of counted bases, deletions and insertions at any given position in any genome in comparison to the reference bases. Additionally,
+\medskip
+
+\begin{itemize}
+\item markers for the relative base frequencies, 
+\item the mean qualities of the detected bases,
+\item known mutations or polymorphisms (e.g. based on dbSNP \cite{dbsnp}) and
+\item called variants in the data
+\end{itemize}
+\medskip
+
+may equally be included into the plots.
+
+\subsection{Loading the package}
+The package can be downloaded and installed with
+\medskip
+
+<<3installing,eval=FALSE>>=
+BiocManager::install("BBCAnalyzer")
+@
+
+After installation, the package can be loaded into R by typing
+\medskip
+
+<<4loading>>=
+library(BBCAnalyzer)
+@
+\medskip
+
+into the R console.
+
+\emph{BBCAnalyzer} requires the R-packages \emph{VariantAnnotation}, \emph{Rsamtools} and \emph{BSgenome.Hsapiens.UCSC.hg19}. All of them are loaded automatically when using \emph{BBCAnalyzer}.
+
+\section{Analyzing the bases and visualizing the results}
+\emph{BBCAnalyzer} performs an analysis of the bases, deletions and inserts at defined positions in sequence alignment data and visualizes the results. The process consists of different steps. These steps are highly dependent on each others output, which is why it is necessary to run the function \texttt{analyzeBases}, performing the whole process of analyzing the data and visualizing the results, at first. If any changes concerning the plotting of the results are desired, the function \texttt{analyzeBasesPlotOnly} may be used, taking amongst others the return value of \texttt{analyzeBases} as an obligatory input.
+
+\subsection{Preparation}
+For the correct functioning of \emph{BBCAnalyzer} in the first place, various input files are necessary:
+\medskip
+
+\begin{itemize}
+\item The names of the samples to be analyzed have to be provided by a file. There has to be one sample name per line without the ``.bam''-suffix.
+\end{itemize}
+\medskip
+
+\noindent Examplary object \emph{samples}:
+
+<<5>>=
+sample_file <- system.file("extdata", "SampleNames.txt", package = "BBCAnalyzer")
+samples <- read.table(sample_file)
+samples
+@
+
+\begin{itemize}
+\item The bam- and the corresponding bai files of the samples to be analyzed have to be provided in a folder. The names of the files have to match the names provided by the sample names file.
+\end{itemize}
+\medskip
+
+\noindent Example files (\emph{Example\_IonTorrent.bam}, \emph{Example\_IonTorrent.bai}, \emph{Example\_454.bam} and \emph{Example\_454.bai}).
+\medskip
+
+\begin{itemize}
+\item The target regions have to be provided by a file. The file may either contain regions (chromosome, tab, first base of a region, tab, last base of a region) or positions (chromosome, tab, position). A mixture of both is not supported. Yet, a region may cover only one base, i.e. the first and last base of a region may be identical.
+\end{itemize}
+\medskip
+
+\noindent Examplary object \emph{targetRegions}:
+<<6>>=
+target_file <- system.file("extdata", "targetRegions.txt", package = "BBCAnalyzer")
+targetRegions <- read.table(target_file)
+targetRegions
+@
+
+\noindent Additionally to the necessary input, optional input may be defined:
+
+\begin{itemize}
+\item If vcf files shall be considered, the corresponding files of the samples to be analyzed have to be provided in a folder. There has to be one file per sample. The names of the files have to match the names provided by the sample names file.
+\end{itemize}
+\medskip
+
+\noindent Selected parts of the file \emph{Example\_IonTorrent.vcf}:
+<<7>>=
+vcf_file <- system.file("extdata", "Example_IonTorrent.vcf", package = "BBCAnalyzer")
+vcf_IT <- read.table(vcf_file)
+vcf_IT
+@
+
+\begin{itemize}
+\item A tabix file containing e.g. known polymorphisms or mutations (dbSNP \cite{dbsnp}) may be provided.
+\end{itemize}
+
+\subsection{Analyzing the bases}
+The analysis of the bases, which actually only serves as a preparation for the final plots, is performed in different steps:
+\bigskip
+
+1) Determine target
+
+\begin{itemize}
+\item If the target regions file contains regions to be analyzed, the different positions covered by the regions are determined.
+\item If the file already contains single positions, the program directly proceeds with the next step.
+\item It is not necessary that the regions or positions are ordered.
+\item If a known insert is supposed to be analyzed, the position of the base succeeding the insert has to be given.
+\end{itemize}
+\medskip
+
+2) Analyze reads
+
+\begin{itemize}
+\item The reads at every targeted position get analyzed. By the help of the CIGAR string the bases, deletions and inserts are determined. The output is saved as $[$Sample$]$.bases.txt.
+\item For every base -- also the inserted ones -- the base quality is determined (``-1'' in case of a deletion). The output is saved as $[$Sample$]$.quality.txt.
+\item Reads with a mapping quality below a user defined mapping quality threshold get excluded from the analysis. Instead of a base, ``MQ'' is noted in the base file. Instead of a quality value, ``-2'' is noted in the quality file.
+\item The function copes with uncovered positions (``NotCovered'' in the base- and the quality file) and insertions $>$1bp (repeated analysis of the position).
+\end{itemize}
+\medskip
+
+3) Analyze frequency
+
+\begin{itemize}
+\item The number of detected bases, deletions and inserts at every position is summed up. Additionally, the mean quality of the detected bases -- including the inserts and for the inserted bases only -- is calculated.
+\item Bases with a quality below a user defined base quality threshold are excluded and counted separately. 
+\item The output is saved as $[$Sample$]$.frequency.txt. 
+\item If the analysis shall consider vcf files as well, the alternate alleles and the genotypes -- as far as they are available for the positions analyzed -- are written out as well. Furthermore, for every called variant it is noted whether it is an insert.
+\item The function copes with up to two different alternate alleles per position. 
+\end{itemize}
+\medskip
+
+4) Report variants
+
+\begin{itemize}
+\item The ratios of the detected bases, deletions and insertions (additionally) at every position are determined. According to the determined ratios, up to six different calls get reported. If the user defines a frequency threshold, minor variants with ratios below this threshold do not get reported. The output is saved as $[$Sample$]$.calling.txt.
+\item The function copes with insertions $>$1bp even if the position at which an insert is detected is not covered by all samples being analyzed.
+\item If the analysis shall consider vcf files as well, the call -- taking the reference allele, the alternate allele(s) and the genotype into account -- is written out as well. For every called variant it is noted whether it is an insert and whether the genotype is heterozygous.
+\end{itemize}
+\medskip
+
+A list of lists is returned containing all the information that is generated in this analysis step. The list with the bases ($[$Sample$]$.bases.txt) is available as the first element of the list. The corresponding qualities ($[$Sample$]$.qualities.txt) are available as the second element of the list. The summed up number of bases ($[$Sample$]$.frequency.txt) are available as the third element of the list. The calculated relative frequencies and the potential calls ($[$Sample$]$.calling.txt) are available as the fourth element.
+\bigskip
+
+<<8>>=
+#Example1
+library("BSgenome.Hsapiens.UCSC.hg19")
+ref_genome<-BSgenome.Hsapiens.UCSC.hg19
+
+output1<-analyzeBases(sample_names=sample_file,
+            bam_input=system.file("extdata",package="BBCAnalyzer"),
+            target_regions=target_file,
+            vcf_input="",
+            output=system.file("extdata",package="BBCAnalyzer"),
+            output_pictures="",
+            known_file=system.file("extdata","dbsnp_138.part.vcf.gz",package="BBCAnalyzer"),
+            genome=ref_genome,
+            MQ_threshold=60,
+            BQ_threshold=50,
+            frequency_threshold=0.01,
+            qual_lower_bound=58,
+            qual_upper_bound=63,
+            marks=c(0.01),
+            relative=TRUE,
+            per_sample=TRUE)
+@
+
+\noindent First lines of the output file \emph{Example\_IonTorrent.bases.txt}
+<<9>>=
+head(output1[[1]][[1]])
+@
+
+\noindent First lines of the output file \emph{Example\_IonTorrent.quality.txt}
+<<9>>=
+head(output1[[2]][[1]])
+@
+
+\noindent First lines of the output file \emph{Example\_454.bases.txt}
+<<9>>=
+head(output1[[1]][[2]])
+@
+
+\noindent First lines of the output file \emph{Example\_454.quality.txt}
+<<9>>=
+head(output1[[2]][[2]])
+@
+
+\noindent First lines of the output file \emph{Example\_IonTorrent.frequency.txt}
+<<9>>=
+head(output1[[3]][[1]])
+@
+
+\noindent First lines of the output file \emph{Example\_454.frequency.txt}
+<<9>>=
+head(output1[[3]][[2]])
+@
+
+\noindent First lines of the output file \emph{Example\_IonTorrent.calling.txt}
+<<9>>=
+head(output1[[4]][[1]])
+@
+
+\noindent First lines of the output file \emph{Example\_454.calling.txt}
+<<9>>=
+head(output1[[4]][[2]])
+@
+
+
+\subsection{Visualizing the results}
+The function -- which may be called separately as well using the function \texttt{analyzeBasesPlotOnly} -- provides different possibilities for visualizing the results:
+
+\begin{itemize}
+\item The absolute or the relative number of detected bases, deletions and inserts may be plotted
+\item One plot per sample or one plot per targeted position may be output. The files are either saved as $[$Sample$]$.png or chr$[$number$]$;$[$position$]$.png.
+\end{itemize}
+\medskip
+
+\noindent Apart from these differences, all plots share some general characteristics:
+
+\begin{itemize}
+\item The function always produces barplots.
+\item The bars are colored according to the base at the corresponding position (adenine: green; cytosine: blue; guanine: yellow; thymine: red; deletion: black; insertion: lilac edge).
+\item The color may additionally contain information on the mean quality of the base if bounds for the lower- and upper mean quality are set. In this case, the color of the bars is darker if the mean quality of the base is closer compared to the upper quality bound. The color of the bar is lighter if the mean quality of the base is closer compared to the lower quality bound.
+\item The reference bases are plotted on the negative y-axis below each position.
+\item A tabix file containing known variants or mutations may be provided. In this case, more than one reference base is plotted at the corresponding position.
+\item Every targeted position is labelled according to the chromosome and the position.
+\item For each position to be analyzed, lines may be drawn representing relative frequencies (defined by user).
+\item The function copes with different inserted bases at one position (stacked bars) and inserts$>$1bp, even if these are not covered by all samples.
+\item If the analysis shall consider vcf files as well, the expected number of detected bases, deletions and inserts -- according to the vcf file -- is added to the plot using dashed lines.
+\end{itemize}
+\bigskip
+
+Exemple: No vcf files, use known polymorphisms (dbSNP), mark 1\% threshold, plot relative frequencies, plot per sample
+
+\begin{figure}[ht!]
+\includegraphics[width=15cm]{./Example_IonTorrent.png}
+\caption{Output file Example\_IonTorrent.png: Validated SNV at chr4;106157698 (only little number of deleted bases), reference base at chr20;31024054, possible SNV at chr21;36206893, known SNP at chr2;25469913; inserted TG at chr21;44514970, possible deletion at chr7;148543694, possible deletion at chr7;148543695; marked 1\% threshold.}
+\end{figure}
+
+\begin{figure}[ht!]
+\includegraphics[width=15cm]{./Example_454.png}
+\caption{Output file Example\_454.png: Validated SNV at chr4;106157698 (only a low frequency of inserted A's), likely SNV at chr20;31024054 (high quality of alternate allele G), possible SNV at chr21;36206893 (low quality and frequency of alternate allele A), known SNP at chr2;25469913; not covered position at chr21;44514970, likely deletion at chr7;148543694, likely deletion at chr7;148543695; marked 1\% threshold.}
+\end{figure}
+\newpage
+
+Exemple: Use vcf files, use known polymorphisms (dbSNP), mark 20\%, 40\%, 60\%, 80\% and 100\%, plot number of reads, plot per target.
+
+<<Example2, eval=FALSE>>=
+analyzeBasesPlotOnly(sample_names=sample_file,
+            vcf_input=system.file("extdata",package="BBCAnalyzer"),
+            output="",
+            known_file=system.file("extdata","dbsnp_138.part.vcf.gz",package="BBCAnalyzer"),            
+            output_list=output_list,
+            qual_lower_bound=58,
+            qual_upper_bound=63,
+            marks=c(0.2,0.4,0.6,0.8,1),
+            relative=FALSE,
+            per_sample=FALSE)
+@
+
+\begin{figure}[ht!]
+\includegraphics[width=15cm]{./chr21;36206893.png}
+\caption{Output file chr21;36206893.png: possible SNV according to Example\_IonTorrent (not called, homozygous); likely SNV according to Example\_454 (called, heterozygous, great deviation from expected number of reads); marked 20\%, 40\%, 60\%, 80\% and 100\%.}
+\end{figure}
+
+\begin{figure}[ht!]
+\includegraphics[width=15cm]{./chr7;148543695.png}
+\caption{Output file chr7;148543695.png: unlikely deletion according to Example\_IonTorrent (not called, homozygous); likely deletion according to Example\_454 (called, heterozygous, deviation from expected number of reads); marked 20\%, 40\%, 60\%, 80\% and 100\%.}
+\end{figure}
+
+\begin{figure}[ht!]
+\includegraphics[width=15cm]{./chr21;44514970.png}
+\caption{Output file chr21;44514970.png: likely insertion according to Example\_IonTorrent (called, heterozygous, small deviation from expected number of reads); not covered position in Example\_454; marked 20\%, 40\%, 60\%, 80\% and 100\%.}
+\end{figure}
+\newpage
+
+\section{Runtime}
+The runtime of \emph{BBCAnalyzer} depends on the number of samples and the number of positions that get analyzed. Furthermore, the number of reads at the positions being analyzed influences the runtime as well.
+
+The following test case analyzes one position for one sample. 344 reads cover the position being analyzed. A vcf file and a file containing known polymorphisms is not considered (vcf file: increases the runtime in this example by 1.625 seconds; file containing known polymorphisms: increases runtime in this example by 2.273 seconds; both: increases runtime in this example by 2.690 seconds). 
+\bigskip
+
+\noindent Test file \emph{SampleNames\_small.txt}:
+\begin{lstlisting}
+Example_IonTorrent
+\end{lstlisting}
+\medskip
+
+\noindent Test files \emph{Example\_IonTorrent\_small.bam} and \emph{Example\_IonTorrent\_small.bai}.
+\medskip
+
+\noindent Test file \emph{targetRegions\_small.txt}:
+\begin{lstlisting}
+4	106157698
+\end{lstlisting}
+
+One barplot per sample is created. The relative frequencies are plotted. The whole pipeline (\texttt{analyzeBases}) consumes 40.496 seconds. The plotting itself (\texttt{analyzeBasesPlotOnly}) consumes 0.109 seconds.
+\bigskip
+
+Exemplary call:
+
+\begin{lstlisting}
+##Example 3:
+#No vcf files, no file containing known polymorphisms, 
+mark 1% threshold, plot relative frequencies, plot per sample.
+\end{lstlisting}
+
+<<Example3,eval=FALSE>>=
+output<-analyzeBases(
+            sample_names=system.file("extdata","SampleNames_small.txt",package="BBCAnalyzer"),
+            bam_input=system.file("extdata",package="BBCAnalyzer"),
+            target_regions=system.file("extdata","targetRegions_small.txt",package="BBCAnalyzer"),
+            vcf_input="",
+            output=system.file("extdata",package="BBCAnalyzer"),
+            output_pictures=system.file("extdata",package="BBCAnalyzer"),
+            known_file="", 
+            genome=ref_genome,
+            MQ_threshold=60,
+            BQ_threshold=50,
+            frequency_threshold=0.01,
+            qual_lower_bound=58,
+            qual_upper_bound=63,
+            marks=c(0.01),
+            relative=TRUE,
+            per_sample=TRUE)
+@
+\bigskip
+
+Exemplary output:
+\begin{figure}[ht!]
+\includegraphics[width=15cm]{./Example_IonTorrent_small.png}
+\caption{Output file Example\_IonTorrent\_small.png: Validated SNV at chr4;106157698, relative frequencies suggest heterozygous mutation, relatively low mean quality of detected cytosines and adenines ; marked 1\% threshold.}
+\end{figure}
+\newpage
+
+\bibliographystyle{plain}
+\bibliography{bibpaper}
+
+\end{document}
