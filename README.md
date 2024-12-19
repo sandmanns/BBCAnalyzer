@@ -5,7 +5,7 @@
 </p>
 
 
-Sandmann, S., de Graaf, A.O. & Dugas, M. BBCAnalyzer: a visual approach to facilitate variant calling. BMC Bioinformatics 18, 133 (2017). https://doi.org/10.1186/s12859-017-1549-4
+Sandmann, S., de Graaf, A.O. & Dugas, M. BBCAnalyzer: a visual approach to facilitate variant calling. BMC Bioinformatics 18, 133 (2017). https://doi.org/10.1186/s12859-017-1549-4.
 
 
 The analysis of alignment data is an essential step in the process of analyzing sequencing data. Mutations like single nucleotide base changes, deletions and insertions may be identified in this step.
@@ -57,3 +57,6 @@ The BBCAnalyzer available at Bioconductor just contains 'common' R functions. If
 For detailed documentation, please check out the manual and the vignette available within this repsitory or on the bioconductor website (https://bioconductor.org/packages/release/bioc/html/BBCAnalyzer.html).
 
 In case of errors or feature requests, do not hesitate to open an issue or contact Sarah Sandmann (sarah.sandmann@uni-muenster.de).
+
+## Citation
+Sandmann, S., de Graaf, A.O. & Dugas, M. BBCAnalyzer: a visual approach to facilitate variant calling. BMC Bioinformatics 18, 133 (2017). https://doi.org/10.1186/s12859-017-1549-4
